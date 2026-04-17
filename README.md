@@ -1,4 +1,13 @@
-## Hexagonal design
+## The Tenets
+
+The Tenets are a set of design principles we've settled on for developing services:
+
+- Hexagonal design
+- Schema-based development
+- Consumer-driven interfaces
+
+They are not set in stone, either in their definitions or in their inclusion as tenets. We're always looking to improve, and can discuss the adjustment of Tenets and their inclusion and removal as our approach evolves.
+### Hexagonal design
 
 A great starting point is to [read this blog post by Herberto Graca](https://herbertograca.com/2017/11/16/explicit-architecture-01-ddd-hexagonal-onion-clean-cqrs-how-i-put-it-all-together/), but here's a quick summary.
 
@@ -8,12 +17,16 @@ The **Core** is the business logic. It contains the entities that allow the appl
 
 **Ports** are the defined public connection points that can be used to drive the application. An example of a Port could be a public method or function of a package's Core. It says nothing about _who_ consumes it, and is designed to make the most sense for the Core itself. Ports shouldn't contort themselves to be convenient for the consumer.
 
-**Adapters** are the concrete implementations that allow specific consumers to use the application's Ports. An example may be an HTTP or GRPC service that translates those types of requests into operations on the Ports.
+**Adapters** are the concrete implementations that allow specific consumers to use the application's Ports. We discuss two types of Adapters: **Generic** and **Specific**.
 
-It's important to note that Ports are generally defined in the application itself, while Adapters could be defined by the application or by consumers of the application. In the case of very common or "obvious" ones, the Adapters are often defined by the application. More niche ones may be defined by the consumers, often by using the Core as a library. Critically, in both cases, the Ports are never "aware" of the Adapters.
+A Generic Adapter is an implementation of a standardized protocol, allowing any consumer to use that protocol. Examples of Generic Adapters may be HTTP-JSON or GRPC services that translates those types of requests into operations on the Ports. Specific Adapters are any that do not use a standardized protocol (including ABIs). We generally prefer Generic Adapters, as they produce less coupling.
+
+It's important to note that Ports are generally defined in the application itself, while Adapters could be defined by the application or by consumers of the application. Generic Adapters are often defined by the application. Specific ones may be defined by the consumers, often by using the Core as a library. Critically, in both cases, the Ports are never "aware" of the Adapters.
 
 If all of the applications in your ecosystem are defined this way, then each application can use or define Adapters to consume the Ports of its dependencies, and it enforces a layering of separated concerns.
-## Schema-based development
+
+One way to determine quickly if your application is correctly structured is to look at its imports. Imports should only ever go one direction – the Core should never import an Adapter for one of its own Ports. Likewise, Ports should never import Adapter modules. At a larger scale, providers of Ports and/or Adapters should never import directly from their consumers.
+### Schema-based development
 
 The hexagonal core of your service is very likely to need to manipulate some sort of data.
 
@@ -22,7 +35,45 @@ If it has a persistent data store, the service that provides it, whether it be t
 It's the persistent data store adapter's job to translate data from data store into an **internal representation** that the core manipulates. There are many ways to define the internal representation, but we've decided to leverage [Protocol Buffers](https://protobuf.dev/), due to their extensive tooling ecosystem, cross-language features, and versioning.
 
 **Schema-based development** is the idea that you define your data schema early, and make it public, then build your application around that schema. It also means that the "internal" representation is not purely internal, it is part of the Ports of the application that other applications can consume.
+
+Protocol buffer [messages types](https://protobuf.dev/programming-guides/proto3/#simple) define the data. Protocol buffer [services](https://protobuf.dev/programming-guides/proto3/#services) _can_ be used to define Ports, but they are certainly not the only way.
+
+Landscape's protocol buffer definitions are [all in one repository](https://github.com/canonical/landscape-proto). This allows for various applications possibly implemented in different programming languages to share the same definitions (remember, they define the Ports) and for the holistic generation of things like OpenAPI specifications and documentation. It also allows for the schemas to be versioned together.
+### Consumer-driven interfaces
+
+*This section is a work-in-progress*
+
+This one is a little bit Go-specific, because it is mainly possible due to the nature of interfaces in Go. The general concept is that any given Core defines its dependencies as interfaces, and the Core itself owns those interfaces.
+
+A small example:
+
+```go
+package demo
+
+type Worker struct {
+	logger Logger
+}
+
+type Logger interface {
+	Error(msg string, args ...any)
+	Info(msg string, args ...any)
+}
+
+func NewWorker(logger Logger) *Worker {
+    return &Worker{logger: logger}
+}
+```
+
+In this example, `Worker` has a dependency, `logger`, with type `Logger`, an interface. Instead of defining `Logger` somewhere else, say, where one or more implementers are defined, it is defined alongside its consumer, `Worker`.
+
+There are a few reasons to do things this way:
+
+- It makes it clear when looking at module's code how to implement providers for its dependencies.
+- It ensures that the interface is only as large as it needs to be. The module only defines the methods it uses, rather than depending on an interface that has "extras".
+- The module itself can easily define mock or default implementations without needing to rely on another module
 ## An example service
+
+*This section is a work-in-progress*
 
 Let's use an example: a small username/password authentication service. Its core logic can be defined as:
 
@@ -54,13 +105,3 @@ message AuthToken {
 ## Resources
 
 - [Landscape's protocol buffer repository](https://github.com/canonical/landscape-proto)
-
-### Early feedback notes
-
-- the protos repository - are the services de-coupled from their schema?
-	- should mention the rationale(s) for having all of the protos in a single repository
-	- mentioning how public API is exhaustively defined by the protos and is therefore back-end language agnostic
-- hexagonal - include some write-up about using module/package imports as an indicator of whether you are violating the domain layering of the application
-- are we going to standardize the definition of ports within the service layer
-	- could be part of the protocol buffer definition (via the service definitions)
-- consumer-driven interfaces
