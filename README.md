@@ -41,8 +41,6 @@ Protocol buffer [messages types](https://protobuf.dev/programming-guides/proto3/
 Landscape's protocol buffer definitions are [all in one repository](https://github.com/canonical/landscape-proto). This allows for various applications possibly implemented in different programming languages to share the same definitions (remember, they define the Ports) and for the holistic generation of things like OpenAPI specifications and documentation. It also allows for the schemas to be versioned together.
 ### Consumer-driven interfaces
 
-*This section is a work-in-progress*
-
 This one is a little bit Go-specific, because it is mainly possible due to the nature of interfaces in Go. The general concept is that any given Core defines its dependencies as interfaces, and the Core itself owns those interfaces.
 
 A small example:
@@ -71,6 +69,8 @@ There are a few reasons to do things this way:
 - It makes it clear when looking at module's code how to implement providers for its dependencies.
 - It ensures that the interface is only as large as it needs to be. The module only defines the methods it uses, rather than depending on an interface that has "extras".
 - The module itself can easily define mock or default implementations without needing to rely on another module
+
+Just because an interface is defined by the consumer doesn't mean it can't match an existing interface. The `Logger` example above is a subset of the interface of Go's [slog](https://pkg.go.dev/log/slog). This implies a default implementation, and saves us from "inventing" new interfaces unnecessarily.
 ## An example service
 
 *This section is a work-in-progress*
@@ -90,7 +90,7 @@ The first step is to do the schema design, establishing the data representation.
 
 Because the username and password need to be provided together, we'll need a data structure that contains them both. It's also a good idea to have a data structure for the authentication token, as there may be metadata fields that go along with it, but also because having a structure makes it easier to manipulate as a custom type.
 
-Here's our protocol buffer definition:
+Here's the protocol buffer definition for our data:
 
 ```protobuf
 message Login {
@@ -100,6 +100,25 @@ message Login {
 
 message AuthToken {
 	string data = 1;
+}
+```
+
+Our Core will use the code generated from these definitions as the types it receives and sends on its Ports. To translate this to Go, they will be the parameter and return types of the Core struct's methods.
+### The Core public API
+
+As this is a Go service, the public API of our Core should be defined as methods:
+
+```go
+package auth
+
+import "github.com/canonical/landscape-go-demo/gen/go/pb"
+
+type Service struct {
+	// Internal state and config values go here.
+}
+
+func Authenticate(login pg.Login) (pb.AuthToken, error) {
+	// Functionality goes here.
 }
 ```
 ## Resources
