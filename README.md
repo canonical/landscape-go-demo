@@ -106,19 +106,83 @@ message AuthToken {
 Our Core will use the code generated from these definitions as the types it receives and sends on its Ports. To translate this to Go, they will be the parameter and return types of the Core struct's methods.
 ### The Core public API
 
-As this is a Go service, the public API of our Core should be defined as methods:
+As this is a Go service, the public API of our Core should be defined as methods that implement an interface:
 
 ```go
-package auth
+// internal/domain/service.go - the interface.
+package domain
 
-import "github.com/canonical/landscape-go-demo/gen/go/pb"
+import (
+	"context"
 
-type Service struct {
-	// Internal state and config values go here.
+	pb "github.com/canonical/landscape-go-demo/gen/authservicepb"
+)
+
+// AuthServicePort is the inbound port interface for AuthService.
+type AuthServicePort interface {
+	Authenticate(ctx context.Context, login *pb.Login) (*pb.AuthToken, error)
 }
 
-func Authenticate(login pg.Login) (pb.AuthToken, error) {
-	// Functionality goes here.
+// Consumer-driven interface definitions for Adapters.
+type TokenAdapter interface {
+	CreateToken(ctx context.Context, username string) (*pb.AuthToken, error)
+}
+```
+
+The implementation implements the interface and depends upon any Adapters:
+
+```go
+// internal/domain/impl.go - the implementation.
+package domain
+
+import (
+	"context"
+
+	pb "github.com/canonical/landscape-go-demo/gen/authservicepb"
+)
+
+// AuthServiceImpl implements AuthServicePort.
+type AuthServiceImpl struct {
+	tokenAdapter TokenAdapter
+}
+
+// NewAuthService creates a new AuthServiceImpl.
+func NewAuthService(tokenAdapter TokenAdapter) *AuthServiceImpl {
+	return &AuthServiceImpl{
+		tokenAdapter: tokenAdapter,
+	}
+}
+
+// The implementation of Authenticate on AuthServiceImpl.
+func (s *AuthServiceImpl) Authenticate(ctx context.Context, login *pb.Login) (*pb.AuthToken, error) {
+	// Authentication logic here, then...
+	
+	return s.tokenAdapter.CreateToken(ctx, login.GetUsername())
+}
+```
+
+In the `main` function for the application, the implementations are stitched together:
+
+```go
+// cmd/server/main.go
+package main
+
+import (
+	"github.com/canonical/landscape-go-demo/internal/domain"
+	"github.com/canonical/landscape-go-demo/internal/adapters/tokenadapter"
+)
+
+func main() {
+	// Whatever config-collecting code is required, e.g., reading env vars.
+
+	tokenAdapter, err := tokenadapter.New("SOME CONFIG VALUE")
+	if err != nil {
+		log.Fatalf("adapter configuration error are often fatal: %v", err)
+	}
+	
+	svc := domain.NewAuthService(tokenAdapter)
+	
+	// Whatever service-running code is required, e.g., running a gPRC service.
 }
 ```
 ## Resources
