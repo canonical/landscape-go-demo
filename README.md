@@ -188,7 +188,7 @@ func main() {
 
 A diagram of this service as written above might look like this (created with [pogo](https://staging.d2gt6ke94y86hu.amplifyapp.com/)):
 
-![[authservice-diagram.png]]
+![AuthService diagram](authservice-diagram.png)
 
 Though `TokenService` may not actually be a separate service, it is still hexagonally-separated from the `AuthService` Cores so that it *could* easily be a separate service. A single service may be a collection of Cores, related through Adapters. Not every Adapter necessarily connects to an external Port on a separate service.
 
